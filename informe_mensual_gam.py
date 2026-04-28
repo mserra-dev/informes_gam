@@ -19,6 +19,7 @@ import argparse
 import base64
 import csv
 import datetime
+import gzip
 import io
 import os
 import time
@@ -188,7 +189,7 @@ def run_pautas(start: datetime.date, end: datetime.date, mes: str, year: int) ->
     import urllib.request
     url = report_service.getReportDownloadURL(job["id"], "CSV_DUMP")
     with urllib.request.urlopen(url) as r:
-        csv_text = r.read().decode("utf-8")
+        csv_text = gzip.decompress(r.read()).decode("utf-8")
 
     # 2. Parsear CSV
     reader = csv.DictReader(io.StringIO(csv_text))
@@ -426,7 +427,7 @@ def run_bloques(start: datetime.date, end: datetime.date, mes: str, year: int) -
     import urllib.request
     url = report_service.getReportDownloadURL(job["id"], "CSV_DUMP")
     with urllib.request.urlopen(url) as r:
-        csv_text = r.read().decode("utf-8")
+        csv_text = gzip.decompress(r.read()).decode("utf-8")
 
     reader = csv.DictReader(io.StringIO(csv_text))
     rows   = []
@@ -665,7 +666,7 @@ def run_programatica(start: datetime.date, end: datetime.date, mes: str, year: i
     import urllib.request
     url = report_service.getReportDownloadURL(job["id"], "CSV_DUMP")
     with urllib.request.urlopen(url) as r:
-        csv_text = r.read().decode("utf-8")
+        csv_text = gzip.decompress(r.read()).decode("utf-8")
 
     reader = csv.DictReader(io.StringIO(csv_text))
     total_adsense = 0.0
