@@ -650,7 +650,7 @@ def run_programatica(start: datetime.date, end: datetime.date, mes: str, year: i
 
     job = report_service.runReportJob({
         "reportQuery": {
-            "dimensions":    ["PROGRAMMATIC_CHANNEL"],
+            "dimensions":    ["DATE"],
             "columns":       [
                 "ADSENSE_LINE_ITEM_LEVEL_REVENUE",
                 "AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE",
@@ -668,17 +668,20 @@ def run_programatica(start: datetime.date, end: datetime.date, mes: str, year: i
         csv_text = r.read().decode("utf-8")
 
     reader = csv.DictReader(io.StringIO(csv_text))
-    rows   = []
+    total_adsense = 0.0
+    total_adx     = 0.0
     for r in reader:
-        canal   = r.get("Dimension.PROGRAMMATIC_CHANNEL", "").strip()
-        if canal.lower() in ("total", ""):
+        date_val = r.get("Dimension.DATE", "").strip()
+        if date_val.lower() in ("total", ""):
             continue
-        adsense = float(r.get("Column.ADSENSE_LINE_ITEM_LEVEL_REVENUE", 0) or 0)
-        adx     = float(r.get("Column.AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE", 0) or 0)
-        rows.append([canal, adsense, adx])
+        total_adsense += float(r.get("Column.ADSENSE_LINE_ITEM_LEVEL_REVENUE", 0) or 0)
+        total_adx     += float(r.get("Column.AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE", 0) or 0)
 
-    total_adsense = sum(r[1] for r in rows)
-    total_adx     = sum(r[2] for r in rows)
+    # Para el informe mostramos una sola fila con los totales del mes
+    rows = [
+        ["AdSense Backfill", total_adsense, 0.0],
+        ["AdX Open Auction", 0.0, total_adx],
+    ]
     total_combined = total_adsense + total_adx
     print(f"   · AdSense: USD {total_adsense:.2f} | AdX: USD {total_adx:.2f} | Total: USD {total_combined:.2f}")
 
