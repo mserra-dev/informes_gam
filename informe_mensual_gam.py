@@ -27,6 +27,7 @@ from email.mime.text import MIMEText
 
 import openpyxl
 from googleads import ad_manager
+from googleads.oauth2 import GoogleServiceAccountClient
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -85,7 +86,15 @@ def last_month_info():
 
 def gam_client() -> ad_manager.AdManagerClient:
     """Crea el cliente de GAM usando el service account."""
-    return ad_manager.AdManagerClient.LoadFromStorage(SERVICE_ACCOUNT_JSON)
+    oauth2_client = GoogleServiceAccountClient(
+        SERVICE_ACCOUNT_JSON,
+        scope=ad_manager.AdManagerClient.DEFAULT_OAUTH2_SCOPE,
+    )
+    return ad_manager.AdManagerClient(
+        oauth2_client,
+        application_name="InformesGAM-ElLitoral",
+        network_code=GAM_NETWORK_CODE,
+    )
 
 
 def google_creds(scopes: list[str]):
