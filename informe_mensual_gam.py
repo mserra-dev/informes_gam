@@ -88,7 +88,7 @@ def gam_client() -> ad_manager.AdManagerClient:
     """Crea el cliente de GAM usando el service account."""
     oauth2_client = GoogleServiceAccountClient(
         SERVICE_ACCOUNT_JSON,
-        scope=ad_manager.AdManagerClient.DEFAULT_OAUTH2_SCOPE,
+        scope="https://www.googleapis.com/auth/dfp",
     )
     return ad_manager.AdManagerClient(
         oauth2_client,
