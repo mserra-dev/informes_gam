@@ -51,7 +51,7 @@ EMAIL_RECIPIENT   = "matias.serra@arcadiaconsultora.com"
 # IMPERSONATE_USER = "matias.serra@arcadiaconsultora.com"
 IMPERSONATE_USER  = None
 
-GAM_API_VERSION   = "v202411"
+GAM_API_VERSION   = "v202602"
 
 # ──────────────────────────────────────────────────────────────
 # ESTILOS EXCEL (compartidos)
