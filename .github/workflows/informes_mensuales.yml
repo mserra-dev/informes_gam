@@ -1,0 +1,74 @@
+name: Informes Mensuales GAM — El Litoral
+
+on:
+  # Corre el 1ro de cada mes a las 8:00 AM (Argentina = UTC-3 → 11:00 UTC)
+  schedule:
+    - cron: "0 11 1 * *"
+
+  # Permite correrlo manualmente desde GitHub → Actions → Run workflow
+  workflow_dispatch:
+    inputs:
+      informe:
+        description: "Informe a generar"
+        required: true
+        default: "todos"
+        type: choice
+        options:
+          - todos
+          - pautas
+          - bloques
+          - programatica
+
+jobs:
+  generar-informes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ── 1. Clonar el repositorio ─────────────────────────────────
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # ── 2. Configurar Python ─────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: automatizacion/requirements.txt
+
+      # ── 3. Instalar dependencias ─────────────────────────────────
+      - name: Install dependencies
+        run: pip install -r automatizacion/requirements.txt
+
+      # ── 4. Escribir credenciales del service account ─────────────
+      #    El secret GAM_SA_JSON_B64 contiene el JSON del service account
+      #    codificado en base64. Se decodifica y escribe a un archivo temporal.
+      - name: Write service account credentials
+        run: |
+          echo "${{ secrets.GAM_SA_JSON_B64 }}" | base64 --decode > /tmp/gam_sa.json
+        shell: bash
+
+      # ── 5. Ejecutar el script de informes ────────────────────────
+      - name: Run informes
+        env:
+          GAM_SA_PATH: /tmp/gam_sa.json
+        run: |
+          cd automatizacion
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            INFORME="${{ github.event.inputs.informe }}"
+          else
+            INFORME="todos"
+          fi
+
+          case "$INFORME" in
+            pautas)       python informe_mensual_gam.py --pautas ;;
+            bloques)      python informe_mensual_gam.py --bloques ;;
+            programatica) python informe_mensual_gam.py --programatica ;;
+            *)            python informe_mensual_gam.py ;;
+          esac
+
+      # ── 6. Limpiar credenciales ───────────────────────────────────
+      - name: Clean up credentials
+        if: always()
+        run: rm -f /tmp/gam_sa.json

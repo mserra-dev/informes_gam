@@ -1,0 +1,18 @@
+# Credenciales — NUNCA subir al repo
+service_account.json
+*.json
+gam_sa*.json
+*_credentials.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+.venv/
+
+# Outputs locales
+*.xlsx
+*.csv
+/tmp/
