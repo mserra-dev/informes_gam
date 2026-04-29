@@ -48,9 +48,13 @@ SERVICE_ACCOUNT_JSON = os.getenv(
 
 DRIVE_FOLDER_ID   = "1UsYfdcsKCiVJJ_VVBvaNkCHL9bXeSOY-"
 EMAIL_RECIPIENT   = "matias.serra@arcadiaconsultora.com"
-# Si el service account tiene delegación de dominio, descomentá la siguiente línea:
-# IMPERSONATE_USER = "matias.serra@arcadiaconsultora.com"
-IMPERSONATE_USER  = None
+# Domain-Wide Delegation: el SA actúa en nombre de este usuario para Drive/Gmail.
+# Requisitos previos:
+#  · DWD habilitado en el SA (Google Cloud > IAM > Cuentas de servicio).
+#  · Scopes autorizados en Workspace Admin (admin.google.com > DWD):
+#    https://www.googleapis.com/auth/gmail.send
+#    https://www.googleapis.com/auth/drive
+IMPERSONATE_USER  = "matias.serra@arcadiaconsultora.com"
 
 GAM_API_VERSION   = "v202602"
 
@@ -125,23 +129,44 @@ def gam_date(d: datetime.date) -> dict:
 
 
 def upload_drive(file_path: str, file_name: str) -> str:
-    """Sube (o actualiza) el archivo en Drive. Devuelve el file_id."""
+    """Sube (o actualiza) el archivo en Drive. Devuelve el file_id.
+
+    El folder destino debe estar dentro de un Shared Drive (Unidad compartida).
+    Los Service Accounts no tienen quota propia en "Mi unidad", por eso es
+    obligatorio usar Shared Drives. Los flags supportsAllDrives e
+    includeItemsFromAllDrives habilitan la API contra ese tipo de drives.
+    """
     creds   = google_creds(["https://www.googleapis.com/auth/drive"])
     service = build("drive", "v3", credentials=creds)
     mime    = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-    # Solo buscar archivos que el service account mismo creó (evita 403 en archivos ajenos)
-    q        = f"name='{file_name}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false and 'me' in owners"
-    existing = service.files().list(q=q, fields="files(id)").execute().get("files", [])
+    # En un Shared Drive el dueño es el drive (no el SA), así que NO filtramos
+    # por 'me' in owners — buscamos cualquier archivo con ese nombre en el folder.
+    q        = f"name='{file_name}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false"
+    existing = service.files().list(
+        q=q,
+        fields="files(id)",
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+    ).execute().get("files", [])
     media    = MediaFileUpload(file_path, mimetype=mime)
 
     if existing:
         file_id = existing[0]["id"]
-        service.files().update(fileId=file_id, media_body=media).execute()
+        service.files().update(
+            fileId=file_id,
+            media_body=media,
+            supportsAllDrives=True,
+        ).execute()
         print(f"   · Drive actualizado: {file_id}")
     else:
         meta    = {"name": file_name, "parents": [DRIVE_FOLDER_ID]}
-        result  = service.files().create(body=meta, media_body=media, fields="id").execute()
+        result  = service.files().create(
+            body=meta,
+            media_body=media,
+            fields="id",
+            supportsAllDrives=True,
+        ).execute()
         file_id = result["id"]
         print(f"   · Drive nuevo: {file_id}")
 
