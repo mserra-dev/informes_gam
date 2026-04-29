@@ -130,7 +130,8 @@ def upload_drive(file_path: str, file_name: str) -> str:
     service = build("drive", "v3", credentials=creds)
     mime    = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-    q        = f"name='{file_name}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false"
+    # Solo buscar archivos que el service account mismo creó (evita 403 en archivos ajenos)
+    q        = f"name='{file_name}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false and 'me' in owners"
     existing = service.files().list(q=q, fields="files(id)").execute().get("files", [])
     media    = MediaFileUpload(file_path, mimetype=mime)
 
