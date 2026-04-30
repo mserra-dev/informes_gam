@@ -90,11 +90,20 @@ def last_month_info():
 
 
 def gam_client() -> ad_manager.AdManagerClient:
-    """Crea el cliente de GAM usando el service account."""
-    oauth2_client = GoogleServiceAccountClient(
-        SERVICE_ACCOUNT_JSON,
-        scope="https://www.googleapis.com/auth/dfp",
-    )
+    """Crea el cliente de GAM usando el service account.
+
+    Si IMPERSONATE_USER está seteado, el SA actúa en nombre de ese usuario
+    humano vía Domain-Wide Delegation. Necesario para que GAM devuelva
+    columnas de revenue: los SA por sí solos suelen recibir CSVs sin
+    finanzas, aunque tengan rol Administrator.
+    """
+    kwargs = {
+        "key_file": SERVICE_ACCOUNT_JSON,
+        "scope":    "https://www.googleapis.com/auth/dfp",
+    }
+    if IMPERSONATE_USER:
+        kwargs["sub"] = IMPERSONATE_USER
+    oauth2_client = GoogleServiceAccountClient(**kwargs)
     return ad_manager.AdManagerClient(
         oauth2_client,
         application_name="InformesGAM-ElLitoral",
@@ -203,11 +212,15 @@ def run_pautas(start: datetime.date, end: datetime.date, mes: str, year: int) ->
                 "AD_SERVER_IMPRESSIONS",
                 "AD_SERVER_CLICKS",
                 "AD_SERVER_CTR",
-                "AD_SERVER_REVENUE",
+                # AD_SERVER_REVENUE y TOTAL_REVENUE están bloqueadas en esta red.
+                # CPM_AND_CPC_REVENUE es la alternativa permitida (excluye CPD).
+                "AD_SERVER_CPM_AND_CPC_REVENUE",
             ],
-            "dateRangeType": "CUSTOM_DATE",
-            "startDate":     gam_date(start),
-            "endDate":       gam_date(end),
+            "dateRangeType":  "CUSTOM_DATE",
+            "startDate":      gam_date(start),
+            "endDate":        gam_date(end),
+            # La red opera en ARS. Sin esto el revenue queda convertido a USD.
+            "reportCurrency": "ARS",
         }
     })
     wait_for_report(report_service, job["id"])
@@ -229,7 +242,8 @@ def run_pautas(start: datetime.date, end: datetime.date, mes: str, year: int) ->
         clicks  = int(float(r.get("Column.AD_SERVER_CLICKS", 0) or 0))
         ctr_raw = r.get("Column.AD_SERVER_CTR", "0") or "0"
         ctr     = float(ctr_raw.replace("%", "")) / 100
-        revenue = float(r.get("Column.AD_SERVER_REVENUE", 0) or 0)
+        # GAM Reporting API devuelve revenue en micros (1.000.000 = 1 unidad).
+        revenue = float(r.get("Column.AD_SERVER_CPM_AND_CPC_REVENUE", 0) or 0) / 1_000_000
         rows.append([advertiser, order, impr, clicks, ctr, revenue])
 
     rows.sort(key=lambda x: x[0])
@@ -442,10 +456,9 @@ def run_bloques(start: datetime.date, end: datetime.date, mes: str, year: int) -
             "dateRangeType": "CUSTOM_DATE",
             "startDate":     gam_date(start),
             "endDate":       gam_date(end),
-            # Filtra solo ad units hijos de El Litoral (ajustar según jerarquía real)
-            "statement": {
-                "query": "WHERE PARENT_AD_UNIT_ID = 21877992475"
-            }
+            # Sin filtro de PARENT_AD_UNIT_ID: la red entera es de El Litoral,
+            # así que tomamos todos los ad units. (El valor anterior 21877992475
+            # era el network code, no un ad unit ID, y devolvía 0 filas.)
         }
     })
     wait_for_report(report_service, job["id"])
@@ -677,14 +690,17 @@ def run_programatica(start: datetime.date, end: datetime.date, mes: str, year: i
 
     job = report_service.runReportJob({
         "reportQuery": {
-            "dimensions":    ["DATE"],
+            "dimensions":    ["PROGRAMMATIC_CHANNEL_NAME"],
             "columns":       [
+                # Las columnas no-LINE_ITEM_LEVEL están bloqueadas en esta red,
+                # pero las LINE_ITEM_LEVEL devuelven los mismos totales.
                 "ADSENSE_LINE_ITEM_LEVEL_REVENUE",
                 "AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE",
             ],
-            "dateRangeType": "CUSTOM_DATE",
-            "startDate":     gam_date(start),
-            "endDate":       gam_date(end),
+            "dateRangeType":  "CUSTOM_DATE",
+            "startDate":      gam_date(start),
+            "endDate":        gam_date(end),
+            "reportCurrency": "USD",
         }
     })
     wait_for_report(report_service, job["id"])
@@ -698,11 +714,15 @@ def run_programatica(start: datetime.date, end: datetime.date, mes: str, year: i
     total_adsense = 0.0
     total_adx     = 0.0
     for r in reader:
-        date_val = r.get("Dimension.DATE", "").strip()
-        if date_val.lower() in ("total", ""):
+        chan = r.get("Dimension.PROGRAMMATIC_CHANNEL_NAME", "").strip()
+        if chan.lower() in ("total", ""):
             continue
         total_adsense += float(r.get("Column.ADSENSE_LINE_ITEM_LEVEL_REVENUE", 0) or 0)
         total_adx     += float(r.get("Column.AD_EXCHANGE_LINE_ITEM_LEVEL_REVENUE", 0) or 0)
+
+    # GAM Reporting API devuelve revenue en micros (1.000.000 = 1 USD).
+    total_adsense /= 1_000_000
+    total_adx     /= 1_000_000
 
     # Para el informe mostramos una sola fila con los totales del mes
     rows = [
