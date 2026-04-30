@@ -48,6 +48,19 @@ SERVICE_ACCOUNT_JSON = os.getenv(
 
 DRIVE_FOLDER_ID   = "1UsYfdcsKCiVJJ_VVBvaNkCHL9bXeSOY-"
 EMAIL_RECIPIENT   = "matias.serra@arcadiaconsultora.com"
+
+# ── Bloques (Informe 2) ───────────────────────────────────────
+# Ad unit "ellitoral": el script trae todos sus hijos (sub-bloques) más los
+# 4 ad units adicionales especificados a continuación.
+BLOQUES_PARENT_ELLITORAL_ID = 22410773100
+BLOQUES_EXTRA_AD_UNIT_IDS   = [
+    22113502716,  # EL - AMP - UM INTERIOR
+    22121789457,  # EL - AMP - UM INTERIOR 3
+    23014865030,  # EL-AMP-INLINE-1
+    23014866065,  # EL-AMP-INLINE-2
+]
+# Top en el email de Bloques: cantidad y criterio de orden.
+BLOQUES_TOP_N = 20
 # Domain-Wide Delegation: el SA actúa en nombre de este usuario para Drive/Gmail.
 # Requisitos previos:
 #  · DWD habilitado en el SA (Google Cloud > IAM > Cuentas de servicio).
@@ -439,48 +452,67 @@ def run_bloques(start: datetime.date, end: datetime.date, mes: str, year: int) -
     print("\n📊 Generando informe CTR Y VIEWABILITY (bloques)...")
 
     client         = gam_client()
+    inv_service    = client.GetService("InventoryService", version=GAM_API_VERSION)
     report_service = client.GetService("ReportService", version=GAM_API_VERSION)
+
+    # 1. Ad units a incluir: hijos del ad unit "ellitoral" + los IDs extras
+    #    listados en BLOQUES_EXTRA_AD_UNIT_IDS. Listamos los hijos vía API
+    #    porque pueden cambiar mes a mes.
+    children_resp = inv_service.getAdUnitsByStatement({
+        "query": f"WHERE parentId = {BLOQUES_PARENT_ELLITORAL_ID} LIMIT 500"
+    })
+    children = list(getattr(children_resp, "results", []) or [])
+    ad_unit_ids = [int(au.id) for au in children] + BLOQUES_EXTRA_AD_UNIT_IDS
+    print(f"   · Filtro: {len(children)} hijos de ellitoral + "
+          f"{len(BLOQUES_EXTRA_AD_UNIT_IDS)} extras = {len(ad_unit_ids)} ad units")
 
     job = report_service.runReportJob({
         "reportQuery": {
             "dimensions":    ["AD_UNIT_NAME"],
             "adUnitView":    "FLAT",
             "columns":       [
+                # Solo métricas de venta directa (AD_SERVER_*), no programática.
                 "AD_SERVER_IMPRESSIONS",
                 "AD_SERVER_CLICKS",
                 "AD_SERVER_CTR",
-                "TOTAL_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS",
-                "TOTAL_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS",
-                "TOTAL_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS_RATE",
+                "AD_SERVER_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS",
+                "AD_SERVER_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS",
+                "AD_SERVER_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS_RATE",
+                "AD_SERVER_CPM_AND_CPC_REVENUE",
             ],
-            "dateRangeType": "CUSTOM_DATE",
-            "startDate":     gam_date(start),
-            "endDate":       gam_date(end),
-            # Sin filtro de PARENT_AD_UNIT_ID: la red entera es de El Litoral,
-            # así que tomamos todos los ad units. (El valor anterior 21877992475
-            # era el network code, no un ad unit ID, y devolvía 0 filas.)
+            "dateRangeType":  "CUSTOM_DATE",
+            "startDate":      gam_date(start),
+            "endDate":        gam_date(end),
+            "statement": {
+                "query": f"WHERE AD_UNIT_ID IN ({','.join(str(x) for x in ad_unit_ids)})"
+            },
+            "reportCurrency": "ARS",
         }
     })
     wait_for_report(report_service, job["id"])
 
-    import urllib.request
+    import urllib.request, re
     url = report_service.getReportDownloadURL(job["id"], "CSV_DUMP")
     with urllib.request.urlopen(url) as r:
         csv_text = gzip.decompress(r.read()).decode("utf-8")
 
+    # Limpia "ellitoral (22410773100) » home_caja1 (22410788503)" → "ellitoral » home_caja1"
+    id_paren_re = re.compile(r"\s*\(\d+\)")
+
     reader = csv.DictReader(io.StringIO(csv_text))
     rows   = []
     for r in reader:
-        name = r.get("Dimension.AD_UNIT_NAME", "").strip()
-        if name.lower() in ("total", ""):
+        raw_name = r.get("Dimension.AD_UNIT_NAME", "").strip()
+        if raw_name.lower() in ("total", ""):
             continue
+        name     = id_paren_re.sub("", raw_name).strip()
         impr     = int(float(r.get("Column.AD_SERVER_IMPRESSIONS", 0) or 0))
         clicks   = int(float(r.get("Column.AD_SERVER_CLICKS", 0) or 0))
         ctr_raw  = r.get("Column.AD_SERVER_CTR", "0") or "0"
         ctr      = float(ctr_raw.replace("%", "")) / 100
-        meas     = int(float(r.get("Column.TOTAL_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS", 0) or 0))
-        view     = int(float(r.get("Column.TOTAL_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS", 0) or 0))
-        view_raw = r.get("Column.TOTAL_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS_RATE", "0") or "0"
+        meas     = int(float(r.get("Column.AD_SERVER_ACTIVE_VIEW_MEASURABLE_IMPRESSIONS", 0) or 0))
+        view     = int(float(r.get("Column.AD_SERVER_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS", 0) or 0))
+        view_raw = r.get("Column.AD_SERVER_ACTIVE_VIEW_VIEWABLE_IMPRESSIONS_RATE", "0") or "0"
         viewr    = float(view_raw.replace("%", "")) / 100
         rows.append([name, impr, clicks, ctr, meas, view, viewr])
 
@@ -599,17 +631,19 @@ def _excel_bloques(rows, totals, start, end, mes, year, path):
 
 
 def _email_bloques(mes, year, start, end, totals, rows, file_id):
-    top5 = sorted(rows, key=lambda x: -x[6])[:5]  # top viewability
-    icons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
-    top5_html = ""
-    for i, r in enumerate(top5):
+    # Top N por impresiones desc (solo venta directa). Los rows ya contienen
+    # únicamente métricas de Ad Server porque el query usa AD_SERVER_*.
+    top_rows  = sorted(rows, key=lambda x: -x[1])[:BLOQUES_TOP_N]
+    top_html  = ""
+    for i, r in enumerate(top_rows, 1):
         bg = "#FAFBFD" if i % 2 else "#FFFFFF"
-        top5_html += (
+        top_html += (
             f'<tr style="background:{bg};border-bottom:1px solid #EEF1F7;">'
-            f'<td style="padding:8px 10px;font-size:12px;color:#222;">{icons[i]} {r[0]}</td>'
-            f'<td style="padding:8px 10px;font-size:13px;font-weight:700;color:#1A5C1A;text-align:right;">{r[6]*100:.1f}%</td>'
+            f'<td style="padding:8px 10px;font-size:12px;color:#6B7A99;text-align:center;width:32px;">{i}</td>'
+            f'<td style="padding:8px 10px;font-size:12px;color:#222;">{r[0]}</td>'
+            f'<td style="padding:8px 10px;font-size:13px;font-weight:700;color:#0D2244;text-align:right;">{r[1]:,}</td>'
             f'<td style="padding:8px 10px;font-size:12px;color:#4A5568;text-align:right;">{r[3]*100:.2f}%</td>'
-            f'<td style="padding:8px 10px;font-size:12px;color:#4A5568;text-align:right;">{r[1]:,}</td>'
+            f'<td style="padding:8px 10px;font-size:12px;color:#1A5C1A;text-align:right;">{r[6]*100:.1f}%</td>'
             f"</tr>"
         )
     drive_link = f"https://drive.google.com/file/d/{file_id}/view"
@@ -655,15 +689,16 @@ def _email_bloques(mes, year, start, end, totals, rows, file_id):
   </table>
 </td></tr>
 <tr><td style="padding:8px 32px 16px;">
-  <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#1B3A6B;text-transform:uppercase;letter-spacing:.8px;border-bottom:2px solid #EEF1F7;padding-bottom:8px;">Top bloques por viewability</p>
+  <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#1B3A6B;text-transform:uppercase;letter-spacing:.8px;border-bottom:2px solid #EEF1F7;padding-bottom:8px;">Top {BLOQUES_TOP_N} bloques por impresiones (Venta Directa)</p>
   <table width="100%" cellpadding="0" cellspacing="0">
     <tr style="background:#EEF1F7;">
+      <td style="padding:7px 10px;font-size:11px;font-weight:700;color:#4A5568;text-transform:uppercase;text-align:center;width:32px;">#</td>
       <td style="padding:7px 10px;font-size:11px;font-weight:700;color:#4A5568;text-transform:uppercase;">Bloque</td>
-      <td style="padding:7px 10px;font-size:11px;font-weight:700;color:#4A5568;text-transform:uppercase;text-align:right;">Viewability</td>
+      <td style="padding:7px 10px;font-size:11px;font-weight:700;color:#4A5568;text-transform:uppercase;text-align:right;">Impresiones</td>
       <td style="padding:7px 10px;font-size:11px;font-weight:700;color:#4A5568;text-transform:uppercase;text-align:right;">CTR</td>
-      <td style="padding:7px 10px;font-size:11px;font-weight:700;color:#4A5568;text-transform:uppercase;text-align:right;">Impr.</td>
+      <td style="padding:7px 10px;font-size:11px;font-weight:700;color:#4A5568;text-transform:uppercase;text-align:right;">Viewability</td>
     </tr>
-    {top5_html}
+    {top_html}
   </table>
 </td></tr>
 <tr><td style="padding:0 32px 24px;text-align:center;">
