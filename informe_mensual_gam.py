@@ -47,7 +47,16 @@ SERVICE_ACCOUNT_JSON = os.getenv(
 )
 
 DRIVE_FOLDER_ID   = "1UsYfdcsKCiVJJ_VVBvaNkCHL9bXeSOY-"
-EMAIL_RECIPIENT   = "matias.serra@arcadiaconsultora.com"
+EMAIL_RECIPIENTS  = [
+    "matias.serra@arcadiaconsultora.com",  # Matias Serra
+    "equidna@arcadiaconsultora.com",       # Victoria Borgna
+    "medusa@arcadiaconsultora.com",        # Eugenia Huter
+    "ellapur@ellitoral.com",               # Enrique Llapur
+    "hidra@arcadiaconsultora.com",         # María Grazia Piga
+    "msuarez@ellitoral.com",               # Magali Suarez
+    "jwendler@ellitoral.com",              # Jose Wendler
+    "quimera@arcadiaconsultora.com",       # Quimey Caputto
+]
 
 # ── Bloques (Informe 2) ───────────────────────────────────────
 # Ad unit "ellitoral": el script trae todos sus hijos (sub-bloques) más los
@@ -201,11 +210,11 @@ def send_email(subject: str, html_body: str) -> None:
     service = build("gmail", "v1", credentials=creds)
     msg     = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["To"]      = EMAIL_RECIPIENT
+    msg["To"]      = ", ".join(EMAIL_RECIPIENTS)
     msg.attach(MIMEText(html_body, "html"))
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     service.users().messages().send(userId="me", body={"raw": raw}).execute()
-    print(f"   · Email enviado a {EMAIL_RECIPIENT}")
+    print(f"   · Email enviado a {len(EMAIL_RECIPIENTS)} destinatarios")
 
 
 # ══════════════════════════════════════════════════════════════
