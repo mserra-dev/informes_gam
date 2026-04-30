@@ -631,9 +631,9 @@ def _excel_bloques(rows, totals, start, end, mes, year, path):
 
 
 def _email_bloques(mes, year, start, end, totals, rows, file_id):
-    # Top N por impresiones desc (solo venta directa). Los rows ya contienen
+    # Top N por viewability desc (solo venta directa). Los rows ya contienen
     # únicamente métricas de Ad Server porque el query usa AD_SERVER_*.
-    top_rows  = sorted(rows, key=lambda x: -x[1])[:BLOQUES_TOP_N]
+    top_rows  = sorted(rows, key=lambda x: -x[6])[:BLOQUES_TOP_N]
     top_html  = ""
     for i, r in enumerate(top_rows, 1):
         bg = "#FAFBFD" if i % 2 else "#FFFFFF"
@@ -642,8 +642,7 @@ def _email_bloques(mes, year, start, end, totals, rows, file_id):
             f'<td style="padding:8px 10px;font-size:12px;color:#6B7A99;text-align:center;width:32px;">{i}</td>'
             f'<td style="padding:8px 10px;font-size:12px;color:#222;">{r[0]}</td>'
             f'<td style="padding:8px 10px;font-size:13px;font-weight:700;color:#0D2244;text-align:right;">{r[1]:,}</td>'
-            f'<td style="padding:8px 10px;font-size:12px;color:#4A5568;text-align:right;">{r[3]*100:.2f}%</td>'
-            f'<td style="padding:8px 10px;font-size:12px;color:#1A5C1A;text-align:right;">{r[6]*100:.1f}%</td>'
+            f'<td style="padding:8px 10px;font-size:13px;font-weight:700;color:#1A5C1A;text-align:right;">{r[6]*100:.1f}%</td>'
             f"</tr>"
         )
     drive_link = f"https://drive.google.com/file/d/{file_id}/view"
@@ -689,13 +688,12 @@ def _email_bloques(mes, year, start, end, totals, rows, file_id):
   </table>
 </td></tr>
 <tr><td style="padding:8px 32px 16px;">
-  <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#1B3A6B;text-transform:uppercase;letter-spacing:.8px;border-bottom:2px solid #EEF1F7;padding-bottom:8px;">Top {BLOQUES_TOP_N} bloques por impresiones (Venta Directa)</p>
+  <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#1B3A6B;text-transform:uppercase;letter-spacing:.8px;border-bottom:2px solid #EEF1F7;padding-bottom:8px;">Top {BLOQUES_TOP_N} bloques por viewability (Venta Directa)</p>
   <table width="100%" cellpadding="0" cellspacing="0">
     <tr style="background:#EEF1F7;">
       <td style="padding:7px 10px;font-size:11px;font-weight:700;color:#4A5568;text-transform:uppercase;text-align:center;width:32px;">#</td>
       <td style="padding:7px 10px;font-size:11px;font-weight:700;color:#4A5568;text-transform:uppercase;">Bloque</td>
       <td style="padding:7px 10px;font-size:11px;font-weight:700;color:#4A5568;text-transform:uppercase;text-align:right;">Impresiones</td>
-      <td style="padding:7px 10px;font-size:11px;font-weight:700;color:#4A5568;text-transform:uppercase;text-align:right;">CTR</td>
       <td style="padding:7px 10px;font-size:11px;font-weight:700;color:#4A5568;text-transform:uppercase;text-align:right;">Viewability</td>
     </tr>
     {top_html}
