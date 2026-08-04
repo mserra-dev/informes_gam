@@ -19,6 +19,10 @@ on:
           - bloques
           - programatica
 
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   generar-informes:
     runs-on: ubuntu-latest
@@ -71,3 +75,13 @@ jobs:
       - name: Clean up credentials
         if: always()
         run: rm -f /tmp/gam_sa.json
+
+      # ── 7. Keepalive ──────────────────────────────────────────────
+      #    GitHub desactiva los crons tras 60 días sin actividad en el
+      #    repo (disabled_inactivity; pasó el 2026-08-01). Re-habilitar
+      #    el workflow en cada corrida resetea ese contador.
+      - name: Keepalive del cron
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT repos/${{ github.repository }}/actions/workflows/informes_mensuales.yml/enable
