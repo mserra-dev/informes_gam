@@ -125,12 +125,22 @@ def resolver_sitios(client, sitios: list[str]) -> dict[str, dict]:
             au = exact[0]
             encontrados[sitio] = {"id": int(au.id), "name": au.name}
             print(f"   · '{sitio}' resuelto fuera del primer nivel → {au.name} ({au.id})")
+            continue
+        # Abreviatura de otro sitio ya pedido (ej. 'radio' → 'Radio Rafaela',
+        # 'puerto' → 'puertonegocios'): se omite con aviso en vez de fallar.
+        ya_pedidos = {au["id"] for au in encontrados.values()}
+        if cands and all(int(au.id) in ya_pedidos for au in cands):
+            nombres = ", ".join(au.name for au in cands)
+            print(f"   ⚠ '{sitio}' no existe como ad unit propio; ya está cubierto por: "
+                  f"{nombres}. Se omite.")
         else:
             listado = ", ".join(f"{au.name} ({au.id})" for au in cands[:20]) or "ninguno"
             raise SystemExit(
                 f"No se pudo resolver el sitio '{sitio}' a un ad unit único. "
                 f"Candidatos: {listado}")
 
+    if not encontrados:
+        raise SystemExit("Ningún sitio pudo resolverse a un ad unit.")
     return encontrados
 
 
@@ -305,7 +315,8 @@ def main():
     ad_units = resolver_sitios(client, sitios)
     for s, au in ad_units.items():
         print(f"   · {s:16s} → {au['name']} ({au['id']})")
-    ids = [au["id"] for au in ad_units.values()]
+    ids    = [au["id"] for au in ad_units.values()]
+    sitios = list(ad_units)  # solo los que se resolvieron
 
     print("⏳ Previsión combinada (sin frequency cap)...")
     std = correr_forecast(client, prospective_line_item(ids, width, height, inicio, fin, tz))
