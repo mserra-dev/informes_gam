@@ -1,0 +1,78 @@
+name: Previsión de disponibilidad GAM
+
+on:
+  # Solo manual: GitHub → Actions → "Previsión de disponibilidad GAM" → Run workflow
+  workflow_dispatch:
+    inputs:
+      sitios:
+        description: "Sitios (ad units de primer nivel) separados por coma"
+        required: true
+        default: "notife,radio,radiorafaela,puerto,puertonegocios,sur24"
+        type: string
+      tamano:
+        description: "Tamaño de creatividad (ANCHOxALTO)"
+        required: true
+        default: "300x250"
+        type: string
+      dias:
+        description: "Duración del período en días"
+        required: true
+        default: "30"
+        type: string
+      inicio:
+        description: "Fecha de inicio YYYY-MM-DD (vacío = desde ahora)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prevision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write service account credentials
+        run: |
+          echo "${{ secrets.GAM_SA_JSON_B64 }}" | base64 --decode > /tmp/gam_sa.json
+        shell: bash
+
+      - name: Run previsión
+        env:
+          GAM_SA_PATH: /tmp/gam_sa.json
+          PREVISION_OUTPUT_DIR: ${{ runner.temp }}/prevision
+        run: |
+          ARGS=(--sitios "${{ github.event.inputs.sitios }}"
+                --tamano "${{ github.event.inputs.tamano }}"
+                --dias   "${{ github.event.inputs.dias }}")
+          if [ -n "${{ github.event.inputs.inicio }}" ]; then
+            ARGS+=(--inicio "${{ github.event.inputs.inicio }}")
+          fi
+          python prevision_disponibilidad.py "${ARGS[@]}"
+
+      - name: Clean up credentials
+        if: always()
+        run: rm -f /tmp/gam_sa.json
+
+      - name: Upload resultado
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prevision-disponibilidad
+          path: ${{ runner.temp }}/prevision/
+          if-no-files-found: ignore
