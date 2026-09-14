@@ -200,7 +200,6 @@ def correr_forecast(client, line_item: dict) -> dict:
         "matched":   _int(getattr(fc, "matchedUnits", 0)),
         "available": _int(getattr(fc, "availableUnits", 0)),
         "possible":  _int(getattr(fc, "possibleUnits", 0)),
-        "reserved":  _int(getattr(fc, "reservedUnits", 0)),
         "breakdown": breakdown,
     }
 
@@ -227,7 +226,6 @@ def imprimir(resultado: dict) -> str:
            "| Métrica | Impresiones |", "|---|---:|",
            f"| Disponibles (available) | **{_fmt(std['available'])}** |",
            f"| Que coinciden con el targeting (matched) | {_fmt(std['matched'])} |",
-           f"| Reservadas por otras líneas (reserved) | {_fmt(std['reserved'])} |",
            f"| Máximo bookeable (possible) | {_fmt(std['possible'])} |"]
     if cap:
         md += [f"| Disponibles con cap 1 imp/usuario/día | **{_fmt(cap['available'])}** |"]
