@@ -18,6 +18,27 @@ on:
           - pautas
           - bloques
           - programatica
+          - prevision
+      sitios:
+        description: "[prevision] Sitios separados por coma"
+        required: false
+        default: "notife,radio,radiorafaela,puerto,puertonegocios,sur24"
+        type: string
+      tamano:
+        description: "[prevision] Tamaño ANCHOxALTO"
+        required: false
+        default: "300x250"
+        type: string
+      dias:
+        description: "[prevision] Duración en días"
+        required: false
+        default: "30"
+        type: string
+      inicio:
+        description: "[prevision] Inicio YYYY-MM-DD (vacío = desde ahora)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   actions: write
@@ -57,6 +78,7 @@ jobs:
       - name: Run informes
         env:
           GAM_SA_PATH: /tmp/gam_sa.json
+          PREVISION_OUTPUT_DIR: ${{ runner.temp }}/prevision
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             INFORME="${{ github.event.inputs.informe }}"
@@ -68,6 +90,14 @@ jobs:
             pautas)       python informe_mensual_gam.py --pautas ;;
             bloques)      python informe_mensual_gam.py --bloques ;;
             programatica) python informe_mensual_gam.py --programatica ;;
+            prevision)
+              ARGS=(--sitios "${{ github.event.inputs.sitios }}"
+                    --tamano "${{ github.event.inputs.tamano }}"
+                    --dias   "${{ github.event.inputs.dias }}")
+              if [ -n "${{ github.event.inputs.inicio }}" ]; then
+                ARGS+=(--inicio "${{ github.event.inputs.inicio }}")
+              fi
+              python prevision_disponibilidad.py "${ARGS[@]}" ;;
             *)            python informe_mensual_gam.py ;;
           esac
 
@@ -75,6 +105,15 @@ jobs:
       - name: Clean up credentials
         if: always()
         run: rm -f /tmp/gam_sa.json
+
+      # ── 6b. Resultado de la previsión (solo informe=prevision) ────
+      - name: Upload previsión
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prevision-disponibilidad
+          path: ${{ runner.temp }}/prevision/
+          if-no-files-found: ignore
 
       # ── 7. Keepalive ──────────────────────────────────────────────
       #    GitHub desactiva los crons tras 60 días sin actividad en el

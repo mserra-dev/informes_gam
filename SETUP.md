@@ -72,3 +72,21 @@ Agregar al crontab (`crontab -e`):
 Archivos generados:
 - `Informe_Pautas_VentaDirecta_MesAño.xlsx`
 - `Informe_CTR_Viewability_MesAño.xlsx`
+
+---
+
+## Previsión de disponibilidad (inventario libre)
+
+`prevision_disponibilidad.py` consulta el ForecastService de GAM y devuelve
+cuántas impresiones quedan disponibles para un tamaño en un conjunto de sitios
+(ad units de primer nivel), en **una sola previsión combinada** (sin doble
+conteo entre sitios) más una variante con frequency cap 1 imp/usuario/día.
+
+```bash
+python prevision_disponibilidad.py                       # 300x250, 30 días, 6 sitios por defecto
+python prevision_disponibilidad.py --sitios notife,sur24 --tamano 728x90 --dias 15
+python prevision_disponibilidad.py --inicio 2026-10-01 --dias 31
+```
+
+En GitHub: **Actions → Previsión de disponibilidad GAM → Run workflow**. El
+resultado queda en el resumen del run y como artifact (JSON/CSV/MD).
